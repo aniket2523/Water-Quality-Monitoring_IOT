@@ -1,0 +1,99 @@
+#define BLYNK_TEMPLATE_ID "TMPL3u-NtybOn"
+#define BLYNK_TEMPLATE_NAME "Water Quality Monitoring"
+#define BLYNK_AUTH_TOKEN "PPExWHDnOZnBN4XRFWx8HCXbwEh7yHac"
+
+#define BLYNK_PRINT Serial
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+
+char auth[] = BLYNK_AUTH_TOKEN;
+char ssid[] = "Abhi";       // Change to your WiFi SSID
+char pass[] = "123456789";  // Change to your WiFi password
+
+BlynkTimer timer;
+
+const int tempSensorPin = 33;        // Analog pin for temperature sensor
+const int tdsSensorPin = 35;         // Analog pin for TDS sensor
+const int turbiditySensorPin = 34;   // Analog pin for turbidity sensor
+
+void setup() {
+  Serial.begin(9600);
+  Blynk.begin(auth, ssid, pass); // Initialize Blynk
+
+  connectWiFi();
+  timer.setInterval(1000L, sendSensorData); // Call sendSensorData every second
+}
+
+void loop() {
+  Blynk.run(); // Run Blynk
+  timer.run(); // Run Blynk timer
+}
+
+void sendSensorData() {
+  // Read sensor values
+  float temperature = readTemperature();
+  float tdsValue = readTDS();
+  float turbidity = readTurbidity(tdsValue); // Pass tdsValue to readTurbidity function
+
+  // Send sensor readings to Blynk app
+  Blynk.virtualWrite(V0, temperature);
+  Blynk.virtualWrite(V1, tdsValue);
+  Blynk.virtualWrite(V2, turbidity);
+
+  // Print sensor readings to serial monitor
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+
+  Serial.print("TDS: ");
+  Serial.print(tdsValue);
+  Serial.println(" ppm");
+
+  Serial.print("Turbidity: ");
+  Serial.print(turbidity);
+  Serial.println(" NTU");
+}
+
+float readTemperature() {
+  int rawValue = analogRead(tempSensorPin);
+  // Assuming LM35 temperature sensor: 10mV per degree Celsius, with 3.3V reference voltage
+  float voltage = (rawValue / 4095.0) * 3.3; // Convert raw value to voltage
+  float temperature = voltage * 100.0; // Convert voltage to temperature (LM35 specific)
+  return temperature;
+}
+
+float readTDS() {
+  int rawValue = analogRead(tdsSensorPin);
+  // Convert raw value to TDS (ppm), calibration required based on the sensor datasheet
+  // Assuming 0-1000 ppm range, with 3.3V reference voltage
+  float voltage = (rawValue / 4095.0) * 3.3;
+  float tds = (voltage * 133.42 - 255.86) * (1.0 + 0.02 * (readTemperature() - 25.0)); // Adjust this formula based on actual sensor calibration
+  if (tds < 0) tds = 0; // Ensure TDS is positive
+  return tds;
+}
+
+float readTurbidity(float tdsValue) { // Modify function signature to accept tdsValue
+  // Convert raw value to turbidity (NTU), calibration required based on the sensor datasheet
+  // Assuming 0-1000 NTU range, with 3.3V reference voltage
+  float voltage = (tdsValue / 1000.0) * 3.3; // Assuming tdsValue in ppm, normalize to 0-3.3V
+  float turbidity;
+  if (voltage > 2.5) {
+    turbidity = 3000; // Set a high value if the TDS value is high
+  } else {
+    turbidity = -1120.4 * voltage * voltage + 5742.3 * voltage - 4352.9;
+    if (turbidity < 0) turbidity = 0; // Ensure turbidity is positive
+  }
+  return turbidity;
+}
+
+void connectWiFi() {
+  Serial.println();
+  Serial.println("Connecting to WiFi");
+  WiFi.begin(ssid, pass);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+}
